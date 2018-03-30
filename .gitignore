@@ -5,3 +5,7 @@ corpus/embedding*.tsv
 corpus/vocab*
 corpus/*.txt.ids*
 
+.idea/
+models/
+corpus/dec*
+corpus/enc*

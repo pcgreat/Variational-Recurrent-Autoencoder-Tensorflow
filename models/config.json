@@ -11,7 +11,7 @@
     "probabilistic": true,
     "orthogonal_initializer": true,
     "iaf": true,
-    "embeddings_path": "<path to glove embeddings>",
+    "embeddings_path": "/Users/chaopan/data/glove/glove.6B.300d.txt",
     "activation": "prelu"
   },
   "train": {
@@ -21,7 +21,7 @@
     "kl_rate_rise_factor": 0.001,
     "kl_rate_rise_time": 50000,
     "max_train_data_size": 0,
-    "steps_per_checkpoint": 750,
+    "steps_per_checkpoint": 10,
     "feed_previous": true,
     "kl_min": 4,
     "max_gradient_norm": 5.0,
