@@ -98,7 +98,7 @@ def create_model(session, config, forward_only):
     dtype = tf.float32
     optimizer = None
     if not forward_only:
-        optimizer = tf.train.AdamOptimizer(config.learning_rate)
+        optimizer = tf.train.RMSPropOptimizer(config.learning_rate)
     if config.activation == "elu":
         activation = tf.nn.elu
     elif config.activation == "prelu":
@@ -353,7 +353,7 @@ def reconstruct(sess, model, config):
             paths = []
             for kk in range(beam_size):
                 paths.append([])
-            curr = range(beam_size)
+            curr = list(range(beam_size))
             num_steps = len(path)
             for i in range(num_steps - 1, -1, -1):
                 for kk in range(beam_size):
@@ -363,8 +363,8 @@ def reconstruct(sess, model, config):
             for kk in range(beam_size):
                 output = [int(logit) for logit in paths[kk][::-1]]
 
-                if EOS_ID in output:
-                    output = output[:output.index(EOS_ID)]
+                if data_utils.EOS_ID in output:
+                    output = output[:output.index(data_utils.EOS_ID)]
                 output = " ".join([rev_vocab[word] for word in output]) + "\n"
                 outputs.append(output)
 

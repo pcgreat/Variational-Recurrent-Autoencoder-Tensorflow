@@ -26,7 +26,7 @@
     "kl_min": 4,
     "max_gradient_norm": 5.0,
     "word_dropout_keep_prob": 0.0,
-    "anneal": false
+    "anneal": true
   },
   "reconstruct": {
     "feed_previous": true,
