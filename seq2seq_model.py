@@ -14,11 +14,14 @@
 # ==============================================================================
 
 """Sequence-to-sequence model with an attention mechanism."""
-
+import pdb
 import random
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 
 import seq2seq_helper
 import utils.data_utils as data_utils
@@ -116,27 +119,13 @@ class Seq2SeqModel(object):
         softmax_loss_function = None
         # Sampled softmax only makes sense if we sample less than vocabulary size.
         if num_samples > 0 and num_samples < self.target_vocab_size:
-            w_t = tf.get_variable("proj_w", [self.target_vocab_size, size], dtype=dtype,
-                                  initializer=weight_initializer())
-            w = tf.transpose(w_t)
-            b = tf.get_variable("proj_b", [self.target_vocab_size], dtype=dtype, initializer=bias_initializer)
-            output_projection = (w, b)
+            self.w_t = tf.get_variable("proj_w", [self.target_vocab_size, size], dtype=dtype,
+                                       initializer=weight_initializer())
+            self.w = tf.transpose(self.w_t)
+            self.b = tf.get_variable("proj_b", [self.target_vocab_size], dtype=dtype, initializer=bias_initializer)
+            output_projection = (self.w, self.b)
 
-            def sampled_loss(inputs, labels):
-                labels = tf.reshape(labels, [-1, 1])
-                # We need to compute the sampled_softmax_loss using 32bit floats to
-                # avoid numerical instabilities.
-                local_w_t = tf.cast(w_t, tf.float32)
-                local_b = tf.cast(b, tf.float32)
-                local_inputs = tf.cast(inputs, tf.float32)
-                local_labels = tf.cast(labels, tf.float32)
-                return tf.cast(
-                    tf.nn.sampled_softmax_loss(weights=local_w_t, biases=local_b, inputs=local_inputs,
-                                               labels=local_labels,
-                                               num_sampled=num_samples, num_classes=self.target_vocab_size),
-                    dtype)
-
-            softmax_loss_function = sampled_loss
+            softmax_loss_function = self.sampled_loss
         # Create the internal multi-layer state for our RNN.
 
         # Create the internal multi-layer state for our RNN.
@@ -227,10 +216,9 @@ class Seq2SeqModel(object):
         self.means, self.logvars = seq2seq_helper.variational_encoder_with_buckets(
             self.encoder_inputs, buckets, encoder_f, enc_latent_f,
             softmax_loss_function=softmax_loss_function)
-        self.outputs, self.losses, self.KL_objs, self.KL_costs = seq2seq_helper.variational_decoder_with_buckets(
-            self.means, self.logvars, self.decoder_inputs, targets,
-            self.target_weights, buckets, decoder_f, latent_dec_f,
-            sample_f, softmax_loss_function=softmax_loss_function)
+        self.outputs, self.losses, self.KL_objs, self.KL_costs = self.variational_decoder_with_buckets(
+            targets=targets, buckets=buckets, decoder=decoder_f, latent_dec=latent_dec_f,
+            sample=sample_f, softmax_loss_function=softmax_loss_function)
 
         # If we use output projection, we need to project outputs for decoding.
         if output_projection is not None:
@@ -254,6 +242,74 @@ class Seq2SeqModel(object):
                     zip(clipped_gradients, params), global_step=self.global_step))
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
+
+    def sampled_loss(self, inputs, labels):
+        dtype = tf.float32
+        labels = tf.reshape(labels, [-1, 1])
+        # We need to compute the sampled_softmax_loss using 32bit floats to
+        # avoid numerical instabilities.
+        self.local_w_t = tf.cast(self.w_t, tf.float32)
+        self.local_b = tf.cast(self.b, tf.float32)
+        local_inputs = tf.cast(inputs, tf.float32)
+        local_labels = tf.cast(labels, tf.float32)
+        return tf.cast(
+            tf.nn.sampled_softmax_loss(weights=self.local_w_t, biases=self.local_b, inputs=local_inputs,
+                                       labels=local_labels,
+                                       num_sampled=512, num_classes=self.target_vocab_size),
+            dtype)
+
+    def variational_decoder_with_buckets(self,
+                                         targets,
+                                         buckets, decoder, latent_dec, sample,
+                                         softmax_loss_function):
+        means = self.means.copy()
+        logvars = self.logvars.copy()
+        decoder_inputs = self.decoder_inputs.copy()
+        self._target = targets
+        self._weights = self.target_weights.copy()
+        self._softmax_loss_function = softmax_loss_function
+        per_example_loss = False
+        name = None
+
+        """Create a sequence-to-sequence model with support for bucketing.
+        """
+        if len(self._target) < buckets[-1][1]:
+            raise ValueError("Length of targets (%d) must be at least that of last"
+                             "bucket (%d)." % (len(self._target), buckets[-1][1]))
+        if len(self._weights) < buckets[-1][1]:
+            raise ValueError("Length of weights (%d) must be at least that of last"
+                             "bucket (%d)." % (len(self._weights), buckets[-1][1]))
+
+        all_inputs = decoder_inputs + self._target + self._weights
+        self._losses = []
+        self._outputs = []
+        self._KL_objs = []
+        self._KL_costs = []
+        with ops.name_scope(name, "variational_decoder_with_buckets", all_inputs):
+            for j, bucket in enumerate(buckets):
+                with variable_scope.variable_scope(variable_scope.get_variable_scope(),
+                                                   reuse=True if j > 0 else None):
+
+                    self._latent_vector, self._kl_obj, self._kl_cost = sample(means[j], logvars[j])
+                    decoder_initial_state = latent_dec(self._latent_vector)
+
+                    self._bucket_outputs, _ = decoder(decoder_initial_state, decoder_inputs[:bucket[1]])
+                    self._outputs.append(self._bucket_outputs)
+                    self.total_size = math_ops.add_n(self._weights[:bucket[1]])
+                    self.total_size += 1e-9
+                    self._KL_objs.append(tf.reduce_mean(self._kl_obj / self.total_size))
+                    self._KL_costs.append(tf.reduce_mean(self._kl_cost / self.total_size))
+                    if per_example_loss:
+                        self._losses.append(seq2seq_helper.sequence_loss_by_example(
+                            self._outputs[-1], self._target[:bucket[1]], self._weights[:bucket[1]],
+                            softmax_loss_function=self._softmax_loss_function))
+                    else:
+                        self.our_loss = seq2seq_helper.sequence_loss(
+                            self._outputs[-1], self._target[:bucket[1]], self._weights[:bucket[1]],
+                            softmax_loss_function=self._softmax_loss_function)
+                        self._losses.append(self.our_loss)
+
+        return self._outputs.copy(), self._losses, self._KL_objs, self._KL_costs
 
     def step(self, session, encoder_inputs, decoder_inputs, target_weights,
              bucket_id, forward_only, prob, beam_size=1):
@@ -313,6 +369,33 @@ class Seq2SeqModel(object):
             output_feed = [self.losses[bucket_id], self.KL_costs[bucket_id]]  # Loss for this batch.
             for l in range(decoder_size):  # Output logits.
                 output_feed.append(self.outputs[bucket_id][l])
+
+        # len(session.run(self.encoder_inputs, input_feed))
+        pdb.set_trace()
+        tf.nn.sampled_softmax_loss(weights=self.local_w_t, biases=self.local_b, inputs=self._outputs[-1][0], labels=self._target[:19][0], num_sampled=512, num_classes=20000)
+        seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
+        seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
+        session.run(self.our_loss, input_feed)
+        session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
+                                                            softmax_loss_function=self._softmax_loss_function),
+                    input_feed)
+
+        session.run(
+            tf.contrib.seq2seq.sequence_loss(logits=tf.concat(self._outputs, 0), targets=tf.stack(self._target[:19], 0),
+                                             weights=tf.stack(self._weights[:19], 0)), input_feed)
+        session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
+                                                            softmax_loss_function=self._softmax_loss_function),
+                    input_feed)
+        session.run(seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19],
+                                                 softmax_loss_function=None), input_feed)
+        session.run(tf.nn.softmax_cross_entropy_with_logits(logits=self._outputs[-1][0], labels=tf.transpose(
+            tf.expand_dims(self._target[:19][0], 0))), input_feed)
+        session.run(tf.contrib.seq2seq.sequence_loss(logits=self._outputs[-1][0], targets=self._target[:19][0],
+                                                     weights=self._weights[:19][0],
+                                                     softmax_loss_function=self._softmax_loss_function), input_feed)
+        # session.run(seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function), input_feed)
+        # out, tar, wei = session.run([self._outputs[-1], self._target[:19], self._weights[:19]], input_feed)
+        # seq2seq_helper.sequence_loss(out, tar, wei, softmax_loss_function=self._softmax_loss_function)
 
         outputs = session.run(output_feed, input_feed)
         if not forward_only:

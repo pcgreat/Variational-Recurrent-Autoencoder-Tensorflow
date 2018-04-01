@@ -444,7 +444,7 @@ def sequence_loss_by_example(logits, targets, weights,
         log_perps = math_ops.add_n(log_perp_list)
         if average_across_timesteps:
             total_size = math_ops.add_n(weights)
-            total_size += 1e-12  # Just to avoid division by 0 for all-0 weights.
+            total_size += 1e-9  # Just to avoid division by 0 for all-0 weights.
             log_perps /= total_size
     return log_perps
 

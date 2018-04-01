@@ -201,7 +201,7 @@ def train(config):
 
         # Load vocabularies.
         vocab_path = os.path.join(config.data_dir, "vocab%d" % config.vocab_size)
-        vocab, _ = data_utils.initialize_vocabulary(vocab_path)
+        vocab, rev_vocab = data_utils.initialize_vocabulary(vocab_path)
 
         # Load word embeddings
         print("Loading pretrained word embeddings.")
@@ -363,8 +363,8 @@ def reconstruct(sess, model, config):
             for kk in range(beam_size):
                 output = [int(logit) for logit in paths[kk][::-1]]
 
-                if EOS_ID in output:
-                    output = output[:output.index(EOS_ID)]
+                if data_utils.EOS_ID in output:
+                    output = output[:output.index(data_utils.EOS_ID)]
                 output = " ".join([rev_vocab[word] for word in output]) + "\n"
                 outputs.append(output)
 
