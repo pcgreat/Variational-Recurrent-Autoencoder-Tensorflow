@@ -98,7 +98,7 @@ def create_model(session, config, forward_only):
     dtype = tf.float32
     optimizer = None
     if not forward_only:
-        optimizer = tf.train.AdamOptimizer(config.learning_rate)
+        optimizer = tf.train.RMSPropOptimizer(config.learning_rate)
     if config.activation == "elu":
         activation = tf.nn.elu
     elif config.activation == "prelu":
@@ -246,6 +246,7 @@ def train(config):
             step_KL_loss_summaries.append(
                 tf.Summary(value=[tf.Summary.Value(tag="KL step loss", simple_value=float(step_KL_loss))]))
             loss += step_loss / config.steps_per_checkpoint
+            print(loss)
             KL_loss += step_KL_loss / config.steps_per_checkpoint
             current_step = model.global_step.eval()
 

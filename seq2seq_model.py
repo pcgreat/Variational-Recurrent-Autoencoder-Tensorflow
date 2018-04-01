@@ -14,7 +14,6 @@
 # ==============================================================================
 
 """Sequence-to-sequence model with an attention mechanism."""
-import pdb
 import random
 
 import numpy as np
@@ -236,10 +235,15 @@ class Seq2SeqModel(object):
                 total_loss = self.losses[b] + self.KL_objs[b]
                 gradients = tf.gradients(total_loss, params)
                 clipped_gradients, norm = tf.clip_by_global_norm(gradients,
-                                                                 max_gradient_norm)
+                                                                  max_gradient_norm)
                 self.gradient_norms.append(norm)
-                self.updates.append(optimizer.apply_gradients(
-                    zip(clipped_gradients, params), global_step=self.global_step))
+                # self.updates.append(optimizer.apply_gradients(
+                #     zip(clipped_gradients, params), global_step=self.global_step))
+                # self.total_losses += total_loss
+            # optim = tf.train.RMSPropOptimizer(self.learning_rate)
+                train_op = optimizer.minimize(total_loss)
+                self.updates.append(train_op)
+
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
 
@@ -371,28 +375,28 @@ class Seq2SeqModel(object):
                 output_feed.append(self.outputs[bucket_id][l])
 
         # len(session.run(self.encoder_inputs, input_feed))
-        pdb.set_trace()
-        tf.nn.sampled_softmax_loss(weights=self.local_w_t, biases=self.local_b, inputs=self._outputs[-1][0], labels=self._target[:19][0], num_sampled=512, num_classes=20000)
-        seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
-        seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
-        session.run(self.our_loss, input_feed)
-        session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
-                                                            softmax_loss_function=self._softmax_loss_function),
-                    input_feed)
-
-        session.run(
-            tf.contrib.seq2seq.sequence_loss(logits=tf.concat(self._outputs, 0), targets=tf.stack(self._target[:19], 0),
-                                             weights=tf.stack(self._weights[:19], 0)), input_feed)
-        session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
-                                                            softmax_loss_function=self._softmax_loss_function),
-                    input_feed)
-        session.run(seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19],
-                                                 softmax_loss_function=None), input_feed)
-        session.run(tf.nn.softmax_cross_entropy_with_logits(logits=self._outputs[-1][0], labels=tf.transpose(
-            tf.expand_dims(self._target[:19][0], 0))), input_feed)
-        session.run(tf.contrib.seq2seq.sequence_loss(logits=self._outputs[-1][0], targets=self._target[:19][0],
-                                                     weights=self._weights[:19][0],
-                                                     softmax_loss_function=self._softmax_loss_function), input_feed)
+        # pdb.set_trace()
+        # tf.nn.sampled_softmax_loss(weights=self.local_w_t, biases=self.local_b, inputs=self._outputs[-1][0], labels=self._target[:19][0], num_sampled=512, num_classes=20000)
+        # seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
+        # seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function)
+        # session.run(self.our_loss, input_feed)
+        # session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
+        #                                                     softmax_loss_function=self._softmax_loss_function),
+        #             input_feed)
+        #
+        # session.run(
+        #     tf.contrib.seq2seq.sequence_loss(logits=tf.concat(self._outputs, 0), targets=tf.stack(self._target[:19], 0),
+        #                                      weights=tf.stack(self._weights[:19], 0)), input_feed)
+        # session.run(seq2seq_helper.sequence_loss_by_example(self._outputs[-1], self._target[:19], self._weights[:19],
+        #                                                     softmax_loss_function=self._softmax_loss_function),
+        #             input_feed)
+        # session.run(seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19],
+        #                                          softmax_loss_function=None), input_feed)
+        # session.run(tf.nn.softmax_cross_entropy_with_logits(logits=self._outputs[-1][0], labels=tf.transpose(
+        #     tf.expand_dims(self._target[:19][0], 0))), input_feed)
+        # session.run(tf.contrib.seq2seq.sequence_loss(logits=self._outputs[-1][0], targets=self._target[:19][0],
+        #                                              weights=self._weights[:19][0],
+        #                                              softmax_loss_function=self._softmax_loss_function), input_feed)
         # session.run(seq2seq_helper.sequence_loss(self._outputs[-1], self._target[:19], self._weights[:19], softmax_loss_function=self._softmax_loss_function), input_feed)
         # out, tar, wei = session.run([self._outputs[-1], self._target[:19], self._weights[:19]], input_feed)
         # seq2seq_helper.sequence_loss(out, tar, wei, softmax_loss_function=self._softmax_loss_function)
