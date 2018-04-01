@@ -354,7 +354,7 @@ def reconstruct(sess, model, config):
             paths = []
             for kk in range(beam_size):
                 paths.append([])
-            curr = range(beam_size)
+            curr = list(range(beam_size))
             num_steps = len(path)
             for i in range(num_steps - 1, -1, -1):
                 for kk in range(beam_size):
